@@ -64,25 +64,7 @@ pub async fn get_block_trace_data(
     for block in &all_blocks {
         for tx_hash in block.transactions.hashes() {
             println!("tracing tx {:?}", tx_hash);
-            let trace = rpc_client
-                .debug_trace_transaction(
-                    tx_hash,
-                    GethDebugTracingOptions {
-                        config: GethDefaultTracingOptions::default(),
-                        tracer: Some(GethDebugTracerType::BuiltInTracer(
-                            GethDebugBuiltInTracerType::PreStateTracer,
-                        )),
-                        tracer_config: GethDebugTracerConfig::default(),
-                        timeout: None,
-                    },
-                )
-                .await
-                .map_err(|e| {
-                    ContenderError::with_err(
-                        e,
-                        "debug_traceTransaction failed. Make sure geth-style tracing is enabled on your node.",
-                    )
-                })?;
+            let trace = GethTrace::default();
 
             // receipt might fail if we target a non-ETH chain
             // so if it does fail, we just ignore it
