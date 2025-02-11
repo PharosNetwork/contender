@@ -302,10 +302,7 @@ where
             let tx_type = self.tx_type;
             let handle = tokio::task::spawn(async move {
                 // estimate gas limit
-                let gas_limit = wallet
-                    .estimate_gas(&tx_req.tx)
-                    .await
-                    .expect("failed to estimate gas");
+                let gas_limit = 1000000;
 
                 // inject missing fields into tx_req.tx
                 let mut tx = tx_req.tx;
@@ -393,24 +390,12 @@ where
                 let gas_price = wallet.get_gas_price().await.unwrap_or_else(|_| {
                     panic!("failed to get gas price for setup step '{}'", tx_label)
                 });
-                let gas_limit = if let Some(gas) = tx_req.tx.gas {
-                    gas
-                } else {
-                    wallet.estimate_gas(&tx_req.tx).await.unwrap_or_else(|_| {
-                        panic!("failed to estimate gas for setup step '{}'", tx_label)
-                    })
-                };
-                let mut tx = tx_req.tx;
-                complete_tx_request(
-                    &mut tx,
-                    tx_type,
-                    gas_price,
-                    (GWEI_TO_WEI as u128).min(gas_price - 1),
-                    gas_limit,
-                    chain_id,
-                );
-
-                // wallet will assign nonce before sending
+                let gas_limit = 1000000;
+                let tx = tx_req
+                    .tx
+                    .with_gas_price(gas_price)
+                    .with_chain_id(chain_id)
+                    .with_gas_limit(gas_limit);
                 let res = wallet
                     .send_transaction(tx)
                     .await
@@ -462,14 +447,7 @@ where
         let key = keccak256(tx_req.input.input.to_owned().unwrap_or_default());
 
         if let std::collections::hash_map::Entry::Vacant(_) = self.gas_limits.entry(key) {
-            let gas_limit = if let Some(gas) = tx_req.gas {
-                gas
-            } else {
-                self.eth_client
-                    .estimate_gas(tx_req)
-                    .await
-                    .map_err(|e| ContenderError::with_err(e, "failed to estimate gas for tx"))?
-            };
+            let gas_limit = 1000000;
             self.gas_limits.insert(key, gas_limit);
         }
         let gas_limit = self
