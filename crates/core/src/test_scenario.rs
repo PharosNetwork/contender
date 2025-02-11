@@ -176,10 +176,7 @@ where
             let rpc_url = self.rpc_url.to_owned();
             let handle = tokio::task::spawn(async move {
                 // estimate gas limit
-                let gas_limit = wallet
-                    .estimate_gas(&tx_req.tx)
-                    .await
-                    .expect("failed to estimate gas");
+                let gas_limit = 1000000;
 
                 // inject missing fields into tx_req.tx
                 let tx = tx_req
@@ -270,9 +267,7 @@ where
                 let gas_price = wallet.get_gas_price().await.unwrap_or_else(|_| {
                     panic!("failed to get gas price for setup step '{}'", tx_label)
                 });
-                let gas_limit = wallet.estimate_gas(&tx_req.tx).await.unwrap_or_else(|_| {
-                    panic!("failed to estimate gas for setup step '{}'", tx_label)
-                });
+                let gas_limit = 1000000;
                 let tx = tx_req
                     .tx
                     .with_gas_price(gas_price)
@@ -329,11 +324,7 @@ where
         let key = keccak256(tx_req.input.input.to_owned().unwrap_or_default());
 
         if let std::collections::hash_map::Entry::Vacant(_) = self.gas_limits.entry(key) {
-            let gas_limit = self
-                .eth_client
-                .estimate_gas(tx_req)
-                .await
-                .map_err(|e| ContenderError::with_err(e, "failed to estimate gas for tx"))?;
+            let gas_limit = 1000000;
             self.gas_limits.insert(key, gas_limit);
         }
         let gas_limit = self
