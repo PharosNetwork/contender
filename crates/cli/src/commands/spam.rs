@@ -1,10 +1,9 @@
 use std::sync::Arc;
 
 use alloy::{
-    network::AnyNetwork,
+    network::{AnyNetwork, TransactionBuilder},
     primitives::{
-        utils::{format_ether, parse_ether},
-        U256,
+        utils::{format_ether, parse_ether}, Address, U256
     },
     providers::{Provider, ProviderBuilder},
     transports::http::reqwest::Url,
@@ -18,6 +17,7 @@ use contender_core::{
     test_scenario::TestScenario,
 };
 use contender_testfile::TestConfig;
+use rand::seq::SliceRandom;
 
 use crate::util::{
     check_private_keys, fund_accounts, get_signers_with_defaults, get_spam_pools,
@@ -143,8 +143,7 @@ pub async fn spam(
     )
     .await?;
 
-    let total_cost =
-        get_max_spam_cost(scenario.to_owned(), &rpc_client).await? * U256::from(duration);
+    let total_cost = get_max_spam_cost(scenario.to_owned(), &rpc_client, &all_signer_addrs).await? * U256::from(duration);
     if min_balance < U256::from(total_cost) {
         return Err(ContenderError::SpamError(
             "min_balance is not enough to cover the cost of the spam transactions",
@@ -225,6 +224,7 @@ pub async fn spam(
 async fn get_max_spam_cost<D: DbOps + Send + Sync + 'static, S: Seeder + Send + Sync>(
     scenario: TestScenario<D, S, TestConfig>,
     rpc_client: &AnyProvider,
+    all_signer_addrs: &Vec<Address>,
 ) -> Result<U256, Box<dyn std::error::Error>> {
     let mut scenario = scenario;
 
@@ -261,9 +261,15 @@ async fn get_max_spam_cost<D: DbOps + Send + Sync + 'static, S: Seeder + Send + 
     let mut prepared_sample_txs = vec![];
     for tx in sample_txs {
         let tx_req = tx.tx;
-        let (prepared_req, _signer) = scenario.prepare_tx_request(&tx_req, gas_price).await?;
+        let (mut prepared_req, _signer) = scenario.prepare_tx_request(&tx_req, gas_price).await?;
+        let from = all_signer_addrs.choose(&mut rand::thread_rng()).unwrap();
+        let to = all_signer_addrs.choose(&mut rand::thread_rng()).unwrap();
+        prepared_req.from = Some(*from);
+        prepared_req.to = Some(alloy::primitives::TxKind::Call(*to));
         println!(
-            "tx_request gas={:?} gas_price={:?} ({:?}, {:?})",
+            "tx_request from={:?} to={:?} gas={:?} gas_price={:?} ({:?}, {:?})",
+            prepared_req.from,
+            prepared_req.to,
             prepared_req.gas,
             prepared_req.gas_price,
             prepared_req.max_fee_per_gas,

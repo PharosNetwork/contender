@@ -12,7 +12,7 @@ use crate::Result;
 use alloy::consensus::Transaction;
 use alloy::eips::eip2718::Encodable2718;
 use alloy::hex::ToHexExt;
-use alloy::network::{AnyNetwork, EthereumWallet, TransactionBuilder};
+use alloy::network::{AnyNetwork, EthereumWallet, NetworkWallet, TransactionBuilder};
 use alloy::primitives::{keccak256, Address, FixedBytes};
 use alloy::providers::{PendingTransactionConfig, Provider, ProviderBuilder};
 use alloy::rpc::types::TransactionRequest;
