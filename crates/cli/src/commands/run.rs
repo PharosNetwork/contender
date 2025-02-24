@@ -119,6 +119,7 @@ pub async fn run(
             duration,
             Some(run_id),
             callback.into(),
+            None
         )
         .await?;
 

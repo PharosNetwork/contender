@@ -20,7 +20,9 @@ use alloy::signers::local::PrivateKeySigner;
 use alloy::transports::http::reqwest::Url;
 use contender_bundle_provider::bundle_provider::new_basic_bundle;
 use contender_bundle_provider::BundleClient;
+use rand::seq::SliceRandom;
 use std::collections::HashMap;
+use std::ops::Add;
 use std::sync::Arc;
 
 /// A test scenario can be used to run a test with a specific configuration, database, and RPC provider.
@@ -306,11 +308,15 @@ where
         &mut self,
         tx_req: &TransactionRequest,
         gas_price: u128,
+        from_addr: Option<&Address>,
+        to_addr: Option<&Address>,
     ) -> Result<(TransactionRequest, EthereumWallet)> {
         let from = tx_req.from.ok_or(ContenderError::SetupError(
             "missing 'from' address in tx request",
             None,
         ))?;
+        let from = from_addr.unwrap_or(&from).clone();
+        let to = to_addr.unwrap_or(&Address::default()).clone();
         let nonce = self
             .nonces
             .get(&from)
@@ -349,14 +355,14 @@ where
             .with_max_fee_per_gas(gas_price + (gas_price / 5))
             .with_max_priority_fee_per_gas(gas_price)
             .with_chain_id(self.chain_id)
-            .with_gas_limit(gas_limit);
+            .with_gas_limit(gas_limit).with_to(to);
 
         Ok((full_tx, signer))
     }
 
     pub async fn prepare_spam(
         &mut self,
-        tx_requests: &[ExecutionRequest],
+        tx_requests: &[ExecutionRequest], all_signer_addr: Option<&Vec<Address>>,
     ) -> Result<Vec<ExecutionPayload>> {
         let gas_price = self
             .rpc_client
@@ -364,6 +370,7 @@ where
             .await
             .map_err(|e| ContenderError::with_err(e, "failed to get gas price"))?;
         let mut payloads = vec![];
+      
         for tx in tx_requests {
             let payload = match tx {
                 ExecutionRequest::Bundle(reqs) => {
@@ -376,11 +383,22 @@ where
 
                     // prepare each tx in the bundle (increment nonce, set gas price, etc)
                     let mut bundle_txs = vec![];
-
+                    
                     for req in reqs {
+                        let empty_vec = vec![];
+                        let all_signer_addr = all_signer_addr.unwrap_or(&empty_vec);
+                        let mut rng = rand::thread_rng();
+                        let from_addr = all_signer_addr.choose(&mut rng).ok_or(ContenderError::SetupError(
+                            "failed to choose 'from' address",
+                            None,
+                        ))?;
+                        let to_addr = all_signer_addr.choose(&mut rng).ok_or(ContenderError::SetupError(
+                            "failed to choose 'to' address",
+                            None,
+                        ))?;
                         let tx_req = req.tx.to_owned();
                         let (tx_req, signer) = self
-                            .prepare_tx_request(&tx_req, gas_price)
+                            .prepare_tx_request(&tx_req, gas_price, Some(from_addr), Some(to_addr))
                             .await
                             .map_err(|e| ContenderError::with_err(e, "failed to prepare tx"))?;
 
@@ -395,10 +413,21 @@ where
                     ExecutionPayload::SignedTxBundle(bundle_txs, reqs.to_owned())
                 }
                 ExecutionRequest::Tx(req) => {
+                    let empty_vec = vec![];
+                    let all_signer_addr = all_signer_addr.unwrap_or(&empty_vec);
+                    let mut rng = rand::thread_rng();
+                    let from_addr = all_signer_addr.choose(&mut rng).ok_or(ContenderError::SetupError(
+                        "failed to choose 'from' address",
+                        None,
+                    ))?;
+                    let to_addr = all_signer_addr.choose(&mut rng).ok_or(ContenderError::SetupError(
+                        "failed to choose 'to' address",
+                        None,
+                    ))?;
                     let tx_req = req.tx.to_owned();
 
                     let (tx_req, signer) = self
-                        .prepare_tx_request(&tx_req, gas_price)
+                        .prepare_tx_request(&tx_req, gas_price, Some(from_addr), Some(to_addr))
                         .await
                         .map_err(|e| ContenderError::with_err(e, "failed to prepare tx"))?;
 
@@ -628,6 +657,7 @@ pub mod tests {
     use alloy::providers::{Provider, ProviderBuilder};
     use alloy::rpc::types::TransactionRequest;
     use std::collections::HashMap;
+    use rand::seq::SliceRandom;
 
     pub struct MockConfig;
 

@@ -3,7 +3,8 @@ use std::sync::Arc;
 use alloy::{
     network::{AnyNetwork, TransactionBuilder},
     primitives::{
-        utils::{format_ether, parse_ether}, Address, U256
+        utils::{format_ether, parse_ether},
+        Address, U256,
     },
     providers::{Provider, ProviderBuilder},
     transports::http::reqwest::Url,
@@ -143,7 +144,8 @@ pub async fn spam(
     )
     .await?;
 
-    let total_cost = get_max_spam_cost(scenario.to_owned(), &rpc_client, &all_signer_addrs).await? * U256::from(duration);
+    let total_cost = get_max_spam_cost(scenario.to_owned(), &rpc_client, &all_signer_addrs).await?
+        * U256::from(duration);
     if min_balance < U256::from(total_cost) {
         return Err(ContenderError::SpamError(
             "min_balance is not enough to cover the cost of the spam transactions",
@@ -177,12 +179,20 @@ pub async fn spam(
                         duration,
                         Some(run_id),
                         cback.into(),
+                        Some(&all_signer_addrs),
                     )
                     .await?;
             }
             SpamCallbackType::Nil(cback) => {
                 spammer
-                    .spam_rpc(&mut scenario, txs_per_block, duration, None, cback.into())
+                    .spam_rpc(
+                        &mut scenario,
+                        txs_per_block,
+                        duration,
+                        None,
+                        cback.into(),
+                        Some(&all_signer_addrs),
+                    )
                     .await?;
             }
         };
@@ -202,12 +212,26 @@ pub async fn spam(
                 .as_millis();
             run_id = db.insert_run(timestamp as u64, tps * duration, &args.testfile)?;
             spammer
-                .spam_rpc(&mut scenario, tps, duration, Some(run_id), cback.into())
+                .spam_rpc(
+                    &mut scenario,
+                    tps,
+                    duration,
+                    Some(run_id),
+                    cback.into(),
+                    Some(&all_signer_addrs),
+                )
                 .await?;
         }
         SpamCallbackType::Nil(cback) => {
             spammer
-                .spam_rpc(&mut scenario, tps, duration, None, cback.into())
+                .spam_rpc(
+                    &mut scenario,
+                    tps,
+                    duration,
+                    None,
+                    cback.into(),
+                    Some(&all_signer_addrs),
+                )
                 .await?;
         }
     };
@@ -245,6 +269,7 @@ async fn get_max_spam_cost<D: DbOps + Send + Sync + 'static, S: Seeder + Send + 
                     },
                 ))
                 .await?,
+            Some(all_signer_addrs),
         )
         .await?
         .iter()
@@ -256,12 +281,20 @@ async fn get_max_spam_cost<D: DbOps + Send + Sync + 'static, S: Seeder + Send + 
         .concat();
 
     let gas_price = rpc_client.get_gas_price().await?;
-
+    let mut rng = rand::thread_rng();
+    let from = all_signer_addrs.choose(&mut rng).ok_or(ContenderError::SpamError(
+        "failed to select a random address",
+        None,
+    ))?;
+    let to = all_signer_addrs.choose(&mut rng).ok_or(ContenderError::SpamError(
+        "failed to select a random address",
+        None,
+    ))?;
     // get gas limit for each tx
     let mut prepared_sample_txs = vec![];
     for tx in sample_txs {
         let tx_req = tx.tx;
-        let (mut prepared_req, _signer) = scenario.prepare_tx_request(&tx_req, gas_price).await?;
+        let (mut prepared_req, _signer) = scenario.prepare_tx_request(&tx_req, gas_price, Some(from), Some(to)).await?;
         let from = all_signer_addrs.choose(&mut rand::thread_rng()).unwrap();
         let to = all_signer_addrs.choose(&mut rand::thread_rng()).unwrap();
         prepared_req.from = Some(*from);

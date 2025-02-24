@@ -128,6 +128,7 @@ mod tests {
                 periods,
                 None,
                 Arc::new(callback_handler),
+                None
             )
             .await;
         assert!(result.is_ok());
