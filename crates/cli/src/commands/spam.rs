@@ -98,6 +98,7 @@ pub async fn spam(
             .collect::<Vec<_>>(),
     ]
     .concat();
+    println!("All signers: {:?}, all_agents:{:?}, user_signers:{:?}", all_signer_addrs, all_agents, user_signers);
 
     if signers_per_period < all_agents.len() {
         return Err(ContenderError::SpamError(
