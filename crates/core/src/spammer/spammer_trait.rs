@@ -40,7 +40,7 @@ where
         num_periods: usize,
         run_id: Option<u64>,
         sent_tx_callback: Arc<F>,
-        all_signer_addr: Option<&Vec<Address>>
+        all_signer_addr: Option<&Vec<Address>>,
     ) -> impl std::future::Future<Output = Result<()>> {
         let quit = Arc::new(AtomicBool::default());
 
@@ -77,7 +77,9 @@ where
                 }
 
                 let trigger = trigger.to_owned();
-                let payloads = scenario.prepare_spam(tx_req_chunks[tick], all_signer_addr).await?;
+                let payloads = scenario
+                    .prepare_spam(tx_req_chunks[tick], all_signer_addr, true)
+                    .await?;
                 let spam_tasks = scenario
                     .execute_spam(trigger, &payloads, sent_tx_callback.clone())
                     .await?;

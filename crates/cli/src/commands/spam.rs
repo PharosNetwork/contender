@@ -98,7 +98,7 @@ pub async fn spam(
             .collect::<Vec<_>>(),
     ]
     .concat();
-    println!("All signers: {:?}, all_agents:{:?}, user_signers:{:?}", all_signer_addrs, all_agents, user_signers);
+    println!("All signers: {:?}", all_signer_addrs);
 
     if signers_per_period < all_agents.len() {
         return Err(ContenderError::SpamError(
@@ -271,6 +271,7 @@ async fn get_max_spam_cost<D: DbOps + Send + Sync + 'static, S: Seeder + Send + 
                 ))
                 .await?,
             Some(all_signer_addrs),
+            false,
         )
         .await?
         .iter()
@@ -283,19 +284,25 @@ async fn get_max_spam_cost<D: DbOps + Send + Sync + 'static, S: Seeder + Send + 
 
     let gas_price = rpc_client.get_gas_price().await?;
     let mut rng = rand::thread_rng();
-    let from = all_signer_addrs.choose(&mut rng).ok_or(ContenderError::SpamError(
-        "failed to select a random address",
-        None,
-    ))?;
-    let to = all_signer_addrs.choose(&mut rng).ok_or(ContenderError::SpamError(
-        "failed to select a random address",
-        None,
-    ))?;
+    let from = all_signer_addrs
+        .choose(&mut rng)
+        .ok_or(ContenderError::SpamError(
+            "failed to select a random address",
+            None,
+        ))?;
+    let to = all_signer_addrs
+        .choose(&mut rng)
+        .ok_or(ContenderError::SpamError(
+            "failed to select a random address",
+            None,
+        ))?;
     // get gas limit for each tx
     let mut prepared_sample_txs = vec![];
     for tx in sample_txs {
         let tx_req = tx.tx;
-        let (mut prepared_req, _signer) = scenario.prepare_tx_request(&tx_req, gas_price, Some(from), Some(to)).await?;
+        let (mut prepared_req, _signer) = scenario
+            .prepare_tx_request(&tx_req, gas_price, Some(from), Some(to))
+            .await?;
         let from = all_signer_addrs.choose(&mut rand::thread_rng()).unwrap();
         let to = all_signer_addrs.choose(&mut rand::thread_rng()).unwrap();
         prepared_req.from = Some(*from);

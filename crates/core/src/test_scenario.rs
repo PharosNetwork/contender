@@ -355,14 +355,21 @@ where
             .with_max_fee_per_gas(gas_price + (gas_price / 5))
             .with_max_priority_fee_per_gas(gas_price)
             .with_chain_id(self.chain_id)
-            .with_gas_limit(gas_limit).with_from(from).with_to(to);
-        println!("from:{:?}, to:{:?}, signer:{:?}", full_tx.from, full_tx.to, signer);
+            .with_gas_limit(gas_limit)
+            .with_from(from)
+            .with_to(to);
+        println!(
+            "from:{:?}, to:{:?}, signer:{:?}",
+            full_tx.from, full_tx.to, signer
+        );
         Ok((full_tx, signer))
     }
 
     pub async fn prepare_spam(
         &mut self,
-        tx_requests: &[ExecutionRequest], all_signer_addr: Option<&Vec<Address>>,
+        tx_requests: &[ExecutionRequest],
+        all_signer_addr: Option<&Vec<Address>>,
+        do_print: bool,
     ) -> Result<Vec<ExecutionPayload>> {
         let gas_price = self
             .rpc_client
@@ -370,96 +377,107 @@ where
             .await
             .map_err(|e| ContenderError::with_err(e, "failed to get gas price"))?;
         let mut payloads = vec![];
-      
-        for tx in tx_requests {
-            let payload = match tx {
-                ExecutionRequest::Bundle(reqs) => {
-                    if self.bundle_client.is_none() {
-                        return Err(ContenderError::SpamError(
-                            "Bundle client not found. Specify a builder url to send bundles.",
-                            None,
-                        ));
-                    }
 
-                    // prepare each tx in the bundle (increment nonce, set gas price, etc)
-                    let mut bundle_txs = vec![];
-                    
-                    for req in reqs {
+        for tx in tx_requests {
+            let payload =
+                match tx {
+                    ExecutionRequest::Bundle(reqs) => {
+                        if self.bundle_client.is_none() {
+                            return Err(ContenderError::SpamError(
+                                "Bundle client not found. Specify a builder url to send bundles.",
+                                None,
+                            ));
+                        }
+
+                        // prepare each tx in the bundle (increment nonce, set gas price, etc)
+                        let mut bundle_txs = vec![];
+
+                        for req in reqs {
+                            let empty_vec = vec![];
+                            let all_signer_addr = all_signer_addr.unwrap_or(&empty_vec);
+                            let mut rng = rand::thread_rng();
+                            let from_addr = all_signer_addr.choose(&mut rng).ok_or(
+                                ContenderError::SetupError("failed to choose 'from' address", None),
+                            )?;
+                            let to_addr = all_signer_addr.choose(&mut rng).ok_or(
+                                ContenderError::SetupError("failed to choose 'to' address", None),
+                            )?;
+                            let tx_req = req.tx.to_owned();
+                            let (tx_req, signer) = self
+                                .prepare_tx_request(
+                                    &tx_req,
+                                    gas_price,
+                                    Some(from_addr),
+                                    Some(to_addr),
+                                )
+                                .await
+                                .map_err(|e| ContenderError::with_err(e, "failed to prepare tx"))?;
+
+                            println!("bundle tx from {:?}", tx_req.from);
+                            // sign tx
+                            let tx_envelope = tx_req.build(&signer).await.map_err(|e| {
+                                ContenderError::with_err(e, "bad request: failed to build tx")
+                            })?;
+
+                            bundle_txs.push(tx_envelope);
+                        }
+                        ExecutionPayload::SignedTxBundle(bundle_txs, reqs.to_owned())
+                    }
+                    ExecutionRequest::Tx(req) => {
                         let empty_vec = vec![];
                         let all_signer_addr = all_signer_addr.unwrap_or(&empty_vec);
                         let mut rng = rand::thread_rng();
-                        let from_addr = all_signer_addr.choose(&mut rng).ok_or(ContenderError::SetupError(
-                            "failed to choose 'from' address",
-                            None,
-                        ))?;
-                        let to_addr = all_signer_addr.choose(&mut rng).ok_or(ContenderError::SetupError(
-                            "failed to choose 'to' address",
-                            None,
-                        ))?;
+                        let from_addr =
+                            all_signer_addr
+                                .choose(&mut rng)
+                                .ok_or(ContenderError::SetupError(
+                                    "failed to choose 'from' address",
+                                    None,
+                                ))?;
+                        let to_addr =
+                            all_signer_addr
+                                .choose(&mut rng)
+                                .ok_or(ContenderError::SetupError(
+                                    "failed to choose 'to' address",
+                                    None,
+                                ))?;
                         let tx_req = req.tx.to_owned();
+
                         let (tx_req, signer) = self
                             .prepare_tx_request(&tx_req, gas_price, Some(from_addr), Some(to_addr))
                             .await
                             .map_err(|e| ContenderError::with_err(e, "failed to prepare tx"))?;
 
-                        println!("bundle tx from {:?}", tx_req.from);
                         // sign tx
-                        let tx_envelope = tx_req.build(&signer).await.map_err(|e| {
+                        let tx_envelope = tx_req.to_owned().build(&signer).await.map_err(|e| {
                             ContenderError::with_err(e, "bad request: failed to build tx")
                         })?;
+                        if do_print {
+                            println!(
+                                "sending tx {} from={} to={:?} input={} value={} gas_limit={}",
+                                tx_envelope.tx_hash(),
+                                tx_req.from.map(|s| s.encode_hex()).unwrap_or_default(),
+                                tx_envelope.to().to(),
+                                tx_req
+                                    .input
+                                    .input
+                                    .as_ref()
+                                    .map(|s| s.encode_hex())
+                                    .unwrap_or_default(),
+                                tx_req
+                                    .value
+                                    .map(|s| s.to_string())
+                                    .unwrap_or_else(|| "0".to_owned()),
+                                tx_req
+                                    .gas
+                                    .map(|g| g.to_string())
+                                    .unwrap_or_else(|| "N/A".to_owned())
+                            );
+                        }
 
-                        bundle_txs.push(tx_envelope);
+                        ExecutionPayload::SignedTx(tx_envelope, req.to_owned())
                     }
-                    ExecutionPayload::SignedTxBundle(bundle_txs, reqs.to_owned())
-                }
-                ExecutionRequest::Tx(req) => {
-                    let empty_vec = vec![];
-                    let all_signer_addr = all_signer_addr.unwrap_or(&empty_vec);
-                    let mut rng = rand::thread_rng();
-                    let from_addr = all_signer_addr.choose(&mut rng).ok_or(ContenderError::SetupError(
-                        "failed to choose 'from' address",
-                        None,
-                    ))?;
-                    let to_addr = all_signer_addr.choose(&mut rng).ok_or(ContenderError::SetupError(
-                        "failed to choose 'to' address",
-                        None,
-                    ))?;
-                    let tx_req = req.tx.to_owned();
-
-                    let (tx_req, signer) = self
-                        .prepare_tx_request(&tx_req, gas_price, Some(from_addr), Some(to_addr))
-                        .await
-                        .map_err(|e| ContenderError::with_err(e, "failed to prepare tx"))?;
-
-                    // sign tx
-                    let tx_envelope = tx_req.to_owned().build(&signer).await.map_err(|e| {
-                        ContenderError::with_err(e, "bad request: failed to build tx")
-                    })?;
-
-                    println!(
-                        "sending tx {} from={} to={:?} input={} value={} gas_limit={}",
-                        tx_envelope.tx_hash(),
-                        tx_req.from.map(|s| s.encode_hex()).unwrap_or_default(),
-                        tx_envelope.to().to(),
-                        tx_req
-                            .input
-                            .input
-                            .as_ref()
-                            .map(|s| s.encode_hex())
-                            .unwrap_or_default(),
-                        tx_req
-                            .value
-                            .map(|s| s.to_string())
-                            .unwrap_or_else(|| "0".to_owned()),
-                        tx_req
-                            .gas
-                            .map(|g| g.to_string())
-                            .unwrap_or_else(|| "N/A".to_owned())
-                    );
-
-                    ExecutionPayload::SignedTx(tx_envelope, req.to_owned())
-                }
-            };
+                };
             payloads.push(payload);
         }
         Ok(payloads)
@@ -656,8 +674,8 @@ pub mod tests {
     use alloy::primitives::{Address, U256};
     use alloy::providers::{Provider, ProviderBuilder};
     use alloy::rpc::types::TransactionRequest;
-    use std::collections::HashMap;
     use rand::seq::SliceRandom;
+    use std::collections::HashMap;
 
     pub struct MockConfig;
 
