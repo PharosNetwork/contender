@@ -219,7 +219,7 @@ pub async fn spam(
                     duration,
                     Some(run_id),
                     cback.into(),
-                    Some(&all_signer_addrs),
+                    Some(&all_signer_addrs[1..].to_vec()),
                 )
                 .await?;
         }
@@ -231,7 +231,7 @@ pub async fn spam(
                     duration,
                     None,
                     cback.into(),
-                    Some(&all_signer_addrs),
+                    Some(&all_signer_addrs[1..].to_vec()),
                 )
                 .await?;
         }
