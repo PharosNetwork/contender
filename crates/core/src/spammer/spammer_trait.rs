@@ -84,10 +84,7 @@ where
                     .execute_spam(trigger, &payloads, sent_tx_callback.clone())
                     .await?;
                 for task in spam_tasks {
-                    let res = task.await;
-                    if let Err(e) = res {
-                        eprintln!("spam task failed: {:?}", e);
-                    }
+                    let _ = task.await;
                 }
                 tick += 1;
             }
