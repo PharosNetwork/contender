@@ -400,13 +400,12 @@ where
                     .send_transaction(tx)
                     .await
                     .unwrap_or_else(|_| panic!("failed to send setup tx '{}'", tx_label));
-
                 // get receipt using provider (not wallet) to allow any receipt type (support non-eth chains)
                 let receipt = res
                     .get_receipt()
                     .await
                     .unwrap_or_else(|_| panic!("failed to get receipt for tx '{}'", tx_label));
-
+                println!("setup hash:{:?}", receipt.transaction_hash);
                 if let Some(name) = tx_req.name {
                     db.insert_named_txs(
                         NamedTx::new(name, receipt.transaction_hash, receipt.contract_address)
